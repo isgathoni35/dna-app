@@ -1,3 +1,7 @@
 streamlit
 pandas
 altair
+requests
+stmol
+py3Dmol
+ipython_genutils
