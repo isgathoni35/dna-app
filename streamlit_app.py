@@ -1,150 +1,246 @@
-import streamlit as st
-import pandas as pd
 import altair as alt
-import requests
-from stmol import showmol
+import pandas as pd
 import py3Dmol
+import requests
+import streamlit as st
+from stmol import showmol
 
-# --- 1. CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Bio-Sequencer Pro", page_icon="🧬")
 
-# Custom CSS for "Billionaire Professional" Look
 st.markdown("""
 <style>
-    .stTextArea textarea {
-        font-family: 'Courier New', monospace;
-        background-color: #f0f2f6;
-        color: #31333F;
-    }
-    .step-title {
-        font-size: 1.2rem;
-        font-weight: bold;
-        color: #00C896; /* Teal Accent */
-        margin-bottom: 10px;
-    }
+    :root { --ink: #17212b; --teal: #008f83; --coral: #e76f51; --mist: #eef5f3; }
+    .stApp { background: #f7f9f8; color: var(--ink); }
+    [data-testid="stSidebar"] { background: #17212b; }
+    [data-testid="stSidebar"] * { color: #f7f9f8; }
+    [data-testid="stSidebar"] .stTextArea textarea { background: #253542; color: #f7f9f8; }
+    .stTextArea textarea, code { font-family: 'Courier New', monospace; }
+    .hero { border-left: 6px solid var(--coral); padding: 0.25rem 1.25rem; margin-bottom: 1.5rem; }
+    .hero p { color: #52616b; font-size: 1.05rem; }
+    .step-title { color: var(--teal); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .metric-strip { background: var(--mist); border-radius: 8px; padding: 0.75rem 1rem; }
+    div.stButton > button { border-radius: 6px; border: 0; background: var(--teal); color: white; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. HEADER ---
-st.title("🧬 Genomic Sequence Analyzer")
-st.markdown("""
-**From Code to Structure:** Transform raw DNA sequences into biological insights and 3D protein structures using Computational Biology.
-""")
+CODON_TABLE = {
+    "UUU": "F", "UUC": "F", "UUA": "L", "UUG": "L",
+    "UCU": "S", "UCC": "S", "UCA": "S", "UCG": "S",
+    "UAU": "Y", "UAC": "Y", "UAA": "*", "UAG": "*",
+    "UGU": "C", "UGC": "C", "UGA": "*", "UGG": "W",
+    "CUU": "L", "CUC": "L", "CUA": "L", "CUG": "L",
+    "CCU": "P", "CCC": "P", "CCA": "P", "CCG": "P",
+    "CAU": "H", "CAC": "H", "CAA": "Q", "CAG": "Q",
+    "CGU": "R", "CGC": "R", "CGA": "R", "CGG": "R",
+    "AUU": "I", "AUC": "I", "AUA": "I", "AUG": "M",
+    "ACU": "T", "ACC": "T", "ACA": "T", "ACG": "T",
+    "AAU": "N", "AAC": "N", "AAA": "K", "AAG": "K",
+    "AGU": "S", "AGC": "S", "AGA": "R", "AGG": "R",
+    "GUU": "V", "GUC": "V", "GUA": "V", "GUG": "V",
+    "GCU": "A", "GCC": "A", "GCA": "A", "GCG": "A",
+    "GAU": "D", "GAC": "D", "GAA": "E", "GAG": "E",
+    "GGU": "G", "GGC": "G", "GGA": "G", "GGG": "G",
+}
 
-# --- 3. SIDEBAR (INPUT) ---
-st.sidebar.header("1. Input Data")
+DEFAULT_SEQUENCE = ">Example_Sequence\nATGGCCATTGTAATGGGCCGCTGAAAGGGTGCCCGATAG"
 
-default_seq = ">Example_Sequence\nATGGCCATTGTAATGGGCCGCTGAAAGGGTGCCCGATAG"
-input_mode = st.sidebar.radio("Input Mode", ["Paste Sequence", "Use Example"])
 
-if input_mode == "Use Example":
-    raw_sequence = default_seq
-else:
-    raw_sequence = st.sidebar.text_area("Paste DNA Sequence (FASTA format supported)", height=250, placeholder=">Sequence_1\nATGC...")
+def clean_sequence(sequence):
+    """Remove FASTA headers, whitespace, and line breaks."""
+    return "".join(
+        line.strip().upper()
+        for line in sequence.splitlines()
+        if not line.strip().startswith(">")
+    )
 
-# --- 4. LOGIC ENGINE ---
 
-def clean_sequence(seq):
-    """Removes FASTA headers and whitespace"""
-    lines = seq.splitlines()
-    if lines and lines[0].startswith(">"):
-        lines = lines[1:]
-    return "".join(lines).upper().replace(" ", "")
+def validate_sequence(sequence):
+    errors = []
+    if not sequence:
+        errors.append("Enter a DNA sequence or choose the example sequence.")
+    invalid = sorted(set(sequence) - set("ACGT"))
+    if invalid:
+        errors.append(f"Invalid DNA character(s): {', '.join(invalid)}.")
+    if sequence and len(sequence) < 3:
+        errors.append("The sequence must contain at least one complete codon.")
+    if sequence and len(sequence) % 3:
+        errors.append("The sequence length must be divisible by 3 for this reading frame.")
+    return errors
+
 
 def transcribe_dna(dna):
-    """Replaces T with U"""
     return dna.replace("T", "U")
 
+
 def translate_rna(rna):
-    """Translates mRNA to Amino Acids using Standard Genetic Code"""
-    codon_table = {
-        'ATA':'I', 'ATC':'I', 'ATT':'I', 'ATG':'M',
-        'ACA':'T', 'ACC':'T', 'ACG':'T', 'ACT':'T',
-        'AAC':'N', 'AAT':'N', 'AAA':'K', 'AAG':'K',
-        'AGC':'S', 'AGT':'S', 'AGA':'R', 'AGG':'R',
-        'CTA':'L', 'CTC':'L', 'CTG':'L', 'CTT':'L',
-        'CCA':'P', 'CCC':'P', 'CCG':'P', 'CCT':'P',
-        'CAC':'H', 'CAT':'H', 'CAA':'Q', 'CAG':'Q',
-        'CGA':'R', 'CGC':'R', 'CGG':'R', 'CGT':'R',
-        'GTA':'V', 'GTC':'V', 'GTG':'V', 'GTT':'V',
-        'GCA':'A', 'GCC':'A', 'GCG':'A', 'GCT':'A',
-        'GAC':'D', 'GAT':'D', 'GAA':'E', 'GAG':'E',
-        'GGA':'G', 'GGC':'G', 'GGG':'G', 'GGT':'G',
-        'TCA':'S', 'TCC':'S', 'TCG':'S', 'TCT':'S',
-        'TTC':'F', 'TTT':'F', 'TTA':'L', 'TTG':'L',
-        'TAC':'Y', 'TAT':'Y', 'TAA':'_', 'TAG':'_',
-        'TGC':'C', 'TGT':'C', 'TGA':'_', 'TGG':'W',
-    }
-    protein = ""
-    for i in range(0, len(rna), 3):
-        if i+3 <= len(rna):
-            codon = rna[i:i+3]
-            protein += codon_table.get(codon, 'X')
-    return protein
+    protein = []
+    for index in range(0, len(rna) - 2, 3):
+        amino_acid = CODON_TABLE[rna[index:index + 3]]
+        if amino_acid == "*":
+            break
+        protein.append(amino_acid)
+    return "".join(protein)
+
 
 def get_3d_structure(protein_sequence):
-    """Fetches PDB data from ESMFold API (Meta AI)"""
-    # API Endpoint for Protein Folding
     url = "https://api.esmatlas.com/foldSequence/v1/pdb/"
-    response = requests.post(url, data=protein_sequence, verify=False)
-    if response.status_code == 200:
-        return response.text
+    try:
+        response = requests.post(
+            url,
+            data=protein_sequence,
+            headers={"Content-Type": "text/plain"},
+            timeout=(10, 120),
+        )
+        response.raise_for_status()
+        return response.text, None
+    except requests.exceptions.Timeout:
+        return None, "The folding service took too long to respond. Try again with a shorter protein."
+    except requests.exceptions.RequestException as error:
+        return None, f"The folding service returned an error: {error}"
+
+
+for key, value in {
+    "active_raw": "",
+    "cleaned_dna": "",
+    "quality_passed": False,
+    "transcription_passed": False,
+    "translation_passed": False,
+    "pdb_data": None,
+    "fold_error": None,
+}.items():
+    st.session_state.setdefault(key, value)
+
+st.markdown("""
+<div class="hero">
+    <h1>🧬 Genomic Sequence Analyzer</h1>
+    <p>Move from a validated DNA sequence to mRNA, protein, and a predicted 3D structure.</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.header("Start an analysis")
+with st.sidebar.form("sequence_form"):
+    input_mode = st.radio("Input source", ["Use Example", "Paste Sequence"], index=0)
+    if input_mode == "Use Example":
+        raw_input = DEFAULT_SEQUENCE
+        st.caption("A validated teaching sequence is ready to run.")
     else:
-        return None
+        raw_input = st.text_area(
+            "DNA sequence (FASTA supported)",
+            height=220,
+            placeholder=">Sequence_1\nATGGCC...",
+        )
+    analyze = st.form_submit_button("Analyze sequence", use_container_width=True)
 
-# PROCESS DATA
-cleaned_dna = clean_sequence(raw_sequence)
-mrna_seq = transcribe_dna(cleaned_dna)
-protein_seq = translate_rna(mrna_seq)
+if analyze:
+    cleaned = clean_sequence(raw_input)
+    errors = validate_sequence(cleaned)
+    st.session_state.update({
+        "active_raw": raw_input,
+        "cleaned_dna": cleaned,
+        "quality_passed": not errors,
+        "transcription_passed": False,
+        "translation_passed": False,
+        "pdb_data": None,
+        "fold_error": None,
+    })
+    if errors:
+        for error in errors:
+            st.sidebar.error(error)
+    else:
+        st.sidebar.success("Sequence validated. Continue through the stages.")
 
-# --- 5. MAIN DISPLAY (Tabs) ---
+cleaned_dna = st.session_state.cleaned_dna
+mrna_seq = transcribe_dna(cleaned_dna) if st.session_state.quality_passed else ""
+protein_seq = translate_rna(mrna_seq) if st.session_state.transcription_passed else ""
 
-tab1, tab2, tab3, tab4 = st.tabs(["1. Quality Check", "2. Transcription", "3. Translation", "4. 3D Structure"])
+st.sidebar.divider()
+st.sidebar.caption("Workflow status")
+status = [
+    ("Quality Check", st.session_state.quality_passed),
+    ("Transcription", st.session_state.transcription_passed),
+    ("Translation", st.session_state.translation_passed),
+    ("3D Structure", bool(st.session_state.pdb_data)),
+]
+for label, complete in status:
+    st.sidebar.write(f"{'✓' if complete else '○'} {label}")
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "1. Quality Check", "2. Transcription", "3. Translation", "4. 3D Structure"
+])
 
 with tab1:
-    st.markdown('<div class="step-title">Step 1: Sequence Cleaning</div>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.caption("Raw Input")
-        st.code(raw_sequence, language="text")
-    with col2:
-        st.caption("Cleaned DNA")
-        st.code(cleaned_dna, language="text")
-        
-    # Nucleotide Counts Chart
-    counts = {'A': cleaned_dna.count('A'), 'T': cleaned_dna.count('T'), 'G': cleaned_dna.count('G'), 'C': cleaned_dna.count('C')}
-    df = pd.DataFrame.from_dict(counts, orient='index', columns=['Count']).reset_index()
-    chart = alt.Chart(df).mark_bar().encode(
-        x='index', y='Count', color=alt.value("#00C896")
-    ).properties(height=300)
-    st.altair_chart(chart, use_container_width=True)
+    st.markdown('<div class="step-title">Step 1 · Validate the DNA input</div>', unsafe_allow_html=True)
+    if not st.session_state.active_raw:
+        st.info("Choose an input source in the sidebar, then select Analyze sequence.")
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.caption("Raw input")
+            st.code(st.session_state.active_raw, language="text")
+        with col2:
+            st.caption("Cleaned DNA")
+            st.code(cleaned_dna, language="text")
+        counts = {base: cleaned_dna.count(base) for base in "ATGC"}
+        gc_content = ((counts["G"] + counts["C"]) / len(cleaned_dna) * 100) if cleaned_dna else 0
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+        metric_col1.metric("Bases", len(cleaned_dna))
+        metric_col2.metric("Codons", len(cleaned_dna) // 3)
+        metric_col3.metric("GC content", f"{gc_content:.1f}%")
+        chart_data = pd.DataFrame({"Base": list(counts), "Count": list(counts.values())})
+        chart = alt.Chart(chart_data).mark_bar(color="#008f83").encode(x="Base", y="Count").properties(height=250)
+        st.altair_chart(chart, use_container_width=True)
+        if st.session_state.quality_passed:
+            st.success("Quality check passed. The sequence is ready for transcription.")
 
 with tab2:
-    st.markdown('<div class="step-title">Step 2: Transcription (DNA → mRNA)</div>', unsafe_allow_html=True)
-    st.write("Thymine (T) is replaced by Uracil (U).")
-    st.code(mrna_seq, language="text")
+    st.markdown('<div class="step-title">Step 2 · Transcription</div>', unsafe_allow_html=True)
+    if not st.session_state.quality_passed:
+        st.info("Complete the Quality Check first.")
+    else:
+        st.write("DNA thymine (T) is replaced by RNA uracil (U).")
+        st.code(mrna_seq, language="text")
+        if st.button("Approve transcription", key="approve_transcription"):
+            st.session_state.transcription_passed = True
+            st.rerun()
+        if st.session_state.transcription_passed:
+            st.success("Transcription approved. The mRNA is ready for translation.")
 
 with tab3:
-    st.markdown('<div class="step-title">Step 3: Translation (mRNA → Protein)</div>', unsafe_allow_html=True)
-    st.write(f"Total Amino Acids: {len(protein_seq)}")
-    st.code(protein_seq, language="text")
+    st.markdown('<div class="step-title">Step 3 · Translation</div>', unsafe_allow_html=True)
+    if not st.session_state.transcription_passed:
+        st.info("Approve the transcription step first.")
+    else:
+        st.write("mRNA codons are converted into amino acids until the first stop codon.")
+        st.code(protein_seq, language="text")
+        st.metric("Amino acids", len(protein_seq))
+        if not protein_seq:
+            st.error("No protein was produced in this reading frame.")
+        elif st.button("Approve protein", key="approve_translation"):
+            st.session_state.translation_passed = True
+            st.rerun()
+        if st.session_state.translation_passed:
+            st.success("Protein approved. It is ready for structure prediction.")
 
 with tab4:
-    st.markdown('<div class="step-title">Step 4: AI Folding Prediction</div>', unsafe_allow_html=True)
-    st.write("Using **ESMFold (Meta AI)** to predict 3D structure.")
-    
-    if st.button("🧬 Generate 3D Structure"):
-        with st.spinner("Contacting Meta AI... Folding Protein..."):
-            pdb_data = get_3d_structure(protein_seq)
-            
-        if pdb_data:
-            st.success("Structure Generated!")
+    st.markdown('<div class="step-title">Step 4 · Predict the 3D structure</div>', unsafe_allow_html=True)
+    if not st.session_state.translation_passed:
+        st.info("Approve the translation step first.")
+    else:
+        st.write("ESMFold will predict a structure from the validated amino-acid sequence.")
+        st.code(protein_seq, language="text")
+        if st.button("Generate 3D structure", key="generate_structure"):
+            st.session_state.fold_error = None
+            with st.spinner("Contacting ESMFold..."):
+                pdb_data, error = get_3d_structure(protein_seq)
+            st.session_state.pdb_data = pdb_data
+            st.session_state.fold_error = error
+            st.rerun()
+        if st.session_state.fold_error:
+            st.error(st.session_state.fold_error)
+        if st.session_state.pdb_data:
+            st.success("Structure generated.")
             view = py3Dmol.view(width=800, height=500)
-            view.addModel(pdb_data, "pdb")
-            view.setStyle({'cartoon': {'color': 'spectrum'}})
+            view.addModel(st.session_state.pdb_data, "pdb")
+            view.setStyle({"cartoon": {"color": "spectrum"}})
             view.zoomTo()
             showmol(view, height=500, width=800)
-        else:
-            st.error("Error fetching structure. API might be busy.")
-    else:
-        st.info("Click the button above to start.")
