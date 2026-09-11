@@ -9,15 +9,23 @@ st.set_page_config(layout="wide", page_title="Bio-Sequencer Pro", page_icon="ðŸ§
 
 st.markdown("""
 <style>
-    :root { --ink: #17212b; --teal: #008f83; --coral: #e76f51; --mist: #eef5f3; }
-    .stApp { background: #f7f9f8; color: var(--ink); }
+    :root { --ink: #17212b; --muted: #52616b; --teal: #008f83; --coral: #e76f51; --mist: #eef5f3; }
+    .stApp, [data-testid="stAppViewContainer"] { background: #f7f9f8; color: var(--ink); }
+    [data-testid="stHeader"] { background: transparent; }
+    [data-testid="stMainBlockContainer"] { padding-top: 3.5rem; }
     [data-testid="stSidebar"] { background: #17212b; }
     [data-testid="stSidebar"] * { color: #f7f9f8; }
     [data-testid="stSidebar"] .stTextArea textarea { background: #253542; color: #f7f9f8; }
     .stTextArea textarea, code { font-family: 'Courier New', monospace; }
     .hero { border-left: 6px solid var(--coral); padding: 0.25rem 1.25rem; margin-bottom: 1.5rem; }
-    .hero p { color: #52616b; font-size: 1.05rem; }
+    .hero p { color: var(--muted); font-size: 1.05rem; }
     .step-title { color: var(--teal); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.75rem; }
+    [data-baseweb="tab-list"] { gap: 0.5rem; border-bottom: 1px solid #cbd8d4; }
+    button[role="tab"] { color: var(--muted) !important; font-weight: 600; }
+    button[role="tab"][aria-selected="true"] { color: var(--coral) !important; }
+    [data-testid="stAlert"] { color: var(--ink); }
+    [data-testid="stMetric"] { background: white; border: 1px solid #d7e2df; border-radius: 8px; padding: 0.75rem; }
+    [data-testid="stMetricLabel"] { color: var(--muted); }
     .metric-strip { background: var(--mist); border-radius: 8px; padding: 0.75rem 1rem; }
     div.stButton > button { border-radius: 6px; border: 0; background: var(--teal); color: white; font-weight: 700; }
 </style>
