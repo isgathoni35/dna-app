@@ -9,25 +9,52 @@ st.set_page_config(layout="wide", page_title="Bio-Sequencer Pro", page_icon="ðŸ§
 
 st.markdown("""
 <style>
-    :root { --ink: #17212b; --muted: #52616b; --teal: #008f83; --coral: #e76f51; --mist: #eef5f3; }
-    .stApp, [data-testid="stAppViewContainer"] { background: #f7f9f8; color: var(--ink); }
-    [data-testid="stHeader"] { background: transparent; }
+    :root {
+        --page: #f7f9f8; --surface: #ffffff; --input: #ffffff;
+        --sidebar: #eef5f3; --ink: #17212b; --muted: #52616b;
+        --border: #cbd8d4; --teal: #008f83; --coral: #e76f51;
+        --mist: #eef5f3; --code: #f1f5f4;
+    }
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"] { background: var(--page); color: var(--ink); }
+    [data-testid="stHeader"] { background: var(--page); }
     [data-testid="stMainBlockContainer"] { padding-top: 3.5rem; }
-    [data-testid="stSidebar"] { background: #17212b; }
-    [data-testid="stSidebar"] * { color: #f7f9f8; }
-    [data-testid="stSidebar"] .stTextArea textarea { background: #253542; color: #f7f9f8; }
+    [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background: var(--sidebar); }
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] small { color: var(--ink); }
+    [data-testid="stSidebar"] .stTextArea textarea,
+    [data-testid="stSidebar"] input { background: var(--input); color: var(--ink); border-color: var(--border); }
     .stTextArea textarea, code { font-family: 'Courier New', monospace; }
     .hero { border-left: 6px solid var(--coral); padding: 0.25rem 1.25rem; margin-bottom: 1.5rem; }
     .hero p { color: var(--muted); font-size: 1.05rem; }
     .step-title { color: var(--teal); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.75rem; }
-    [data-baseweb="tab-list"] { gap: 0.5rem; border-bottom: 1px solid #cbd8d4; }
+    [data-baseweb="tab-list"] { gap: 0.5rem; border-bottom: 1px solid var(--border); }
     button[role="tab"] { color: var(--muted) !important; font-weight: 600; }
     button[role="tab"][aria-selected="true"] { color: var(--coral) !important; }
-    [data-testid="stAlert"] { color: var(--ink); }
-    [data-testid="stMetric"] { background: white; border: 1px solid #d7e2df; border-radius: 8px; padding: 0.75rem; }
+    [data-testid="stAlert"] { color: var(--ink); background: var(--surface); }
+    [data-testid="stMetric"] { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
     [data-testid="stMetricLabel"] { color: var(--muted); }
     .metric-strip { background: var(--mist); border-radius: 8px; padding: 0.75rem 1rem; }
     div.stButton > button { border-radius: 6px; border: 0; background: var(--teal); color: white; font-weight: 700; }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --page: #0e1418; --surface: #17252a; --input: #1d3036;
+            --sidebar: #17212b; --ink: #edf4f2; --muted: #b8c7c5;
+            --border: #34464a; --teal: #45c7b3; --coral: #ff9272;
+            --mist: #17252a; --code: #17252a;
+        }
+        [data-baseweb="tab-list"] { border-bottom-color: var(--border); }
+        button[role="tab"] { color: var(--muted) !important; }
+        button[role="tab"][aria-selected="true"] { color: var(--coral) !important; }
+        [data-testid="stAlert"] { color: var(--ink); background: var(--surface); }
+        [data-testid="stMetric"] { background: var(--surface); border-color: var(--border); }
+        [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: var(--ink); }
+        [data-testid="stCodeBlock"] { background: var(--code); border: 1px solid var(--border); }
+        [data-testid="stCodeBlock"] pre { color: #d7f4ed; }
+        .hero p { color: var(--muted); }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,8 +153,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.header("Start an analysis")
+input_mode = st.sidebar.radio("Input source", ["Use Example", "Custom Sample"], index=0)
 with st.sidebar.form("sequence_form"):
-    input_mode = st.radio("Input source", ["Use Example", "Paste Sequence"], index=0)
     if input_mode == "Use Example":
         raw_input = DEFAULT_SEQUENCE
         st.caption("A validated teaching sequence is ready to run.")
@@ -136,6 +163,7 @@ with st.sidebar.form("sequence_form"):
             "DNA sequence (FASTA supported)",
             height=220,
             placeholder=">Sequence_1\nATGGCC...",
+            key="custom_sequence",
         )
     analyze = st.form_submit_button("Analyze sequence", use_container_width=True)
 
